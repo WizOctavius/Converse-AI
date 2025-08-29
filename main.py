@@ -151,7 +151,6 @@ templates = Jinja2Templates(directory="templates")
 
 chat_histories: Dict[str, List[Dict[str, str]]] = {}
 
-# --- This function now receives the API keys for the session ---
 async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: WebSocket, session_id: str, api_keys: Dict[str, str]):
     gemini_api_key = api_keys.get("gemini")
     murf_api_key = api_keys.get("murf")
@@ -186,12 +185,9 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
                 try:
                     while True:
                         response = await murf_ws.recv()
-                        
-                        # --- DIAGNOSTIC LOGGING ---
                         logger.info(f"Received from Murf: {response}")
-                        
                         data = json.loads(response)
-                        if "audio" in data:
+                        if "audio" in data and data["audio"]:
                             audio_chunk_count += 1
                             await client_websocket.send_text(json.dumps({"type": "audio_chunk", "audio_data": data["audio"]}))
                         if data.get("final"):
@@ -254,9 +250,15 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
             await client_websocket.send_text(json.dumps({"type": "llm_response_text", "text": full_llm_response_text}))
         except Exception as e:
             logger.error(f"Failed to send final messages to client: {e}")
+        
+        try:
+            logger.info("Server has sent all data and is closing the WebSocket.")
+            await client_websocket.close()
+        except Exception as e:
+            logger.error(f"Error while closing websocket: {e}")
+            
         print("\n--- End of LLM Stream ---\n")
 
-# --- WebSocket endpoint now handles API key configuration ---
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
@@ -264,7 +266,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     api_keys = {}
     try:
-        # First message must be the configuration with API keys
         config_message = await websocket.receive_json()
         if config_message.get("type") == "config":
             api_keys = config_message.get("keys", {})
@@ -295,7 +296,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     await asyncio.sleep(1.2)
                     final_transcript = state["last_transcript"]
                     if not final_transcript: return
-                    # Pass the API keys to the streaming function
                     asyncio.create_task(stream_llm_response_to_murf_and_client(final_transcript, websocket, session_id, api_keys))
                     await websocket.send_text(json.dumps({"type": "transcription", "text": final_transcript}))
                 except asyncio.CancelledError: pass
@@ -339,8 +339,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     finally:
         logger.info(f"WebSocket endpoint for session {session_id} finished.")
 
-# --- HTTP Endpoints (They will use keys from .env) ---
-
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return Response(status_code=204)
@@ -348,9 +346,6 @@ async def favicon():
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
-
-# ... (All other HTTP endpoints like /tts, /upload, /transcribe/file etc. remain unchanged)
-# ... They will continue to use the API keys loaded from the .env file.
 
 if __name__ == "__main__":
     import uvicorn
