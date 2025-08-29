@@ -333,10 +333,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.warn("UNKNOWN message type:", message.type);
                 }
             };
+            
             websocket.onclose = () => {
-                updateStatus('Recording stopped.', false);
-                if (isRecording) stopStreaming();
+                console.log("WebSocket connection closed by server.");
+                updateStatus('Session finished. Ready for new command.', false);
+                isRecording = false; 
+                updateRecordButton('idle');
             };
+
             websocket.onerror = (error) => {
                 console.error('WebSocket Error:', error);
                 updateStatus('WebSocket connection error.', true);
@@ -352,13 +356,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isRecording) return;
         isRecording = false;
         updateRecordButton('processing');
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-            websocket.close();
-        }
-        setTimeout(() => {
-            updateRecordButton('idle');
-            updateStatus("Ready for command.");
-        }, 2000);
+        updateStatus("Processing your command...", false);
+        
         if (scriptNode) {
             scriptNode.disconnect();
             scriptNode = null;
