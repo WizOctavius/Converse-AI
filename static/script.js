@@ -271,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             audioPlayer.start();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
-            const wsUrl = `ws://${window.location.host}/ws/${sessionId}`;
+            const wsUrl = `wss://${window.location.host}/ws/${sessionId}`;
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
