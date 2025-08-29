@@ -10,7 +10,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -186,6 +186,10 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
                 try:
                     while True:
                         response = await murf_ws.recv()
+                        
+                        # --- DIAGNOSTIC LOGGING ---
+                        logger.info(f"Received from Murf: {response}")
+                        
                         data = json.loads(response)
                         if "audio" in data:
                             audio_chunk_count += 1
@@ -336,6 +340,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         logger.info(f"WebSocket endpoint for session {session_id} finished.")
 
 # --- HTTP Endpoints (They will use keys from .env) ---
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/", response_class=HTMLResponse)
 async def read_index(request: Request):
