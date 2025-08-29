@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isRecording = false;
     let sessionId = null;
 
-    // --- REVAMPED AudioPlayer Class ---
+    // --- FINAL AudioPlayer Class ---
     class AudioPlayer {
         constructor() {
             this.audioContext = null;
@@ -71,7 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 offset += chunk.byteLength;
             }
 
-            const wavBuffer = this.createWavBuffer(combined);
+            // The 'combined' buffer is now a complete WAV file received from Murf.
+            // We NO LONGER create our own header. We just use the buffer directly.
+            const wavBuffer = combined.buffer;
+
             try {
                 const audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
                 const source = this.audioContext.createBufferSource();
@@ -89,42 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 this.isPlaying = false;
             }
         }
-
-        createWavBuffer(pcmData) {
-            const sampleRate = 44100;
-            const numChannels = 1;
-            const bytesPerSample = 2;
-            const blockAlign = numChannels * bytesPerSample;
-            const byteRate = sampleRate * blockAlign;
-            const dataSize = pcmData.length;
-            const buffer = new ArrayBuffer(44 + dataSize);
-            const view = new DataView(buffer);
-            this.writeString(view, 0, 'RIFF');
-            view.setUint32(4, 36 + dataSize, true);
-            this.writeString(view, 8, 'WAVE');
-            this.writeString(view, 12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true);
-            view.setUint16(22, numChannels, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, byteRate, true);
-            view.setUint16(32, blockAlign, true);
-            view.setUint16(34, bytesPerSample * 8, true);
-            this.writeString(view, 36, 'data');
-            view.setUint32(40, dataSize, true);
-            new Uint8Array(buffer, 44).set(pcmData);
-            return buffer;
-        }
-        
-        writeString(view, offset, string) {
-            for (let i = 0; i < string.length; i++) {
-                view.setUint8(offset + i, string.charCodeAt(i));
-            }
-        }
     }
     const audioPlayer = new AudioPlayer();
 
-    // --- REVAMPED UI Elements ---
+    // --- UI Elements ---
     const mainRecordBtn = document.getElementById('mainRecordBtn');
     const arcReactorIcon = document.getElementById('arcReactorIcon');
     const arcCore = document.getElementById('arc-core');
@@ -142,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const TARGET_SAMPLE_RATE = 16000;
     let chatAnimationId;
 
-    // --- API Key Management (Unchanged) ---
+    // --- API Key Management ---
     function saveApiKeys() {
         apiKeys.gemini = geminiApiKeyInput.value.trim();
         apiKeys.assemblyai = assemblyaiApiKeyInput.value.trim();
@@ -178,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
     saveSettingsBtn.addEventListener('click', saveApiKeys);
 
-    // --- Session Initialization (Unchanged) ---
+    // --- Session Initialization ---
     function initializeSession() {
         sessionId = crypto.randomUUID();
         console.log(`New session started: ${sessionId}`);
@@ -201,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return bytes.buffer;
     }
 
-    // --- REVAMPED: UI State Management Functions ---
+    // --- UI State Management ---
     function updateRecordButton(state) {
         switch (state) {
             case 'idle':
@@ -250,10 +221,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (assistantBubbles.length > 0) {
             const lastBubble = assistantBubbles[assistantBubbles.length - 1];
             lastBubble.textContent = text;
+            requestAnimationFrame(() => {
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+            });
         }
     }
 
-    // --- WebSocket and Audio Handling (Unchanged) ---
+    // --- WebSocket and Audio Handling ---
     function handleAudioStreamStart() {
         console.log("Audio streaming started from server");
         updateStatus("Receiving audio stream...", false);
@@ -323,11 +297,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             websocket.onmessage = (event) => {
-                // --- DIAGNOSTIC LOGGING START ---
-                // This will show us every raw message that arrives from the server.
-                console.log("Received data from server:", event.data);
-                // --- DIAGNOSTIC LOGGING END ---
-
                 if (typeof event.data !== 'string' || event.data.trim() === '') return;
                 let message;
                 try {
@@ -336,12 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error("FAILED to parse JSON from server:", event.data, e);
                     return;
                 }
-
-                // --- DIAGNOSTIC LOGGING START ---
-                // This will confirm the message was parsed and show its type.
-                console.log("Parsed message type:", message.type);
-                // --- DIAGNOSTIC LOGGING END ---
-
                 if (message.type === 'error') {
                     console.error("Error from server:", message.message);
                     updateStatus(`Server Error: ${message.message}`, true);
@@ -389,6 +352,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isRecording) return;
         isRecording = false;
         updateRecordButton('processing');
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.close();
+        }
         setTimeout(() => {
             updateRecordButton('idle');
             updateStatus("Ready for command.");
@@ -405,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
         stopChatVisualizer();
     }
 
-    // --- Audio Processing Utilities (Unchanged) ---
+    // --- Audio Processing Utilities ---
     function resampleBuffer(inputBuffer, fromSampleRate, toSampleRate) {
         if (fromSampleRate === toSampleRate) return inputBuffer;
         const sampleRateRatio = fromSampleRate / toSampleRate;
@@ -434,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return output;
     }
 
-    // --- REVAMPED: Visualizer Functions ---
+    // --- Visualizer Functions ---
     function startChatVisualizer(stream) {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const analyser = audioCtx.createAnalyser();
@@ -479,5 +445,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initialize on load ---
     loadApiKeys();
     initializeSession();
-    updateRecordButton('idle'); // Set initial button state
+    updateRecordButton('idle');
 });
