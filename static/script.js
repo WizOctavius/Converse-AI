@@ -271,8 +271,11 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             audioPlayer.start();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
-            const wsUrl = `wss://${window.location.host}/ws/${sessionId}`;
-            websocket = new WebSocket(wsUrl);
+           const isSecure = window.location.protocol === 'https:';
+           const wsProtocol = isSecure ? 'wss' : 'ws';
+           const wsUrl = `${wsProtocol}://${window.location.host}/ws/${sessionId}`;
+           console.log(`Attempting to connect to WebSocket at: ${wsUrl}`); // Added for debugging
+           websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
                 console.log("WebSocket connected. Sending API keys.");
