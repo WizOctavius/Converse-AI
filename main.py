@@ -185,15 +185,16 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
                 nonlocal audio_chunk_count
                 try:
                     while True:
-                        response = await asyncio.wait_for(murf_ws.recv(), timeout=10.0)
+                        response = await murf_ws.recv()
                         data = json.loads(response)
                         if "audio" in data:
                             audio_chunk_count += 1
                             await client_websocket.send_text(json.dumps({"type": "audio_chunk", "audio_data": data["audio"]}))
                         if data.get("final"):
+                            logger.info("Murf has indicated the audio stream is final.")
                             break
-                except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed):
-                    logger.warning("Murf audio stream ended or timed out.")
+                except websockets.exceptions.ConnectionClosed as e:
+                    logger.warning(f"Murf WebSocket connection closed: {e}")
                 except Exception as e:
                     logger.error(f"Error in Murf receiver: {e}")
 
