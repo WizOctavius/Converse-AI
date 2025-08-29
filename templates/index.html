@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stark - Voice Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --stark-dark-blue: #0a192f;
+            --stark-red: #d32f2f;
+            --stark-gold: #ffc107;
+            --stark-light-blue: #64ffda; /* A cyan accent for HUD elements */
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--stark-dark-blue);
+            background-image:
+                linear-gradient(rgba(100, 255, 218, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(100, 255, 218, 0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .hud-glass {
+            background: rgba(10, 25, 47, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 255, 218, 0.2);
+            box-shadow: 0 0 20px rgba(100, 255, 218, 0.1);
+        }
+
+        .arc-reactor-shadow {
+            filter: drop-shadow(0 0 10px var(--stark-light-blue)) drop-shadow(0 0 20px var(--stark-light-blue));
+        }
+        
+        .arc-reactor-pulse {
+            animation: arc-pulse 2s infinite ease-in-out;
+        }
+
+        @keyframes arc-pulse {
+            0% { transform: scale(1); box-shadow: 0 0 5px #64ffda, 0 0 10px #64ffda, 0 0 15px #64ffda; }
+            50% { transform: scale(1.05); box-shadow: 0 0 15px #64ffda, 0 0 25px #64ffda, 0 0 35px #64ffda; }
+            100% { transform: scale(1); box-shadow: 0 0 5px #64ffda, 0 0 10px #64ffda, 0 0 15px #64ffda; }
+        }
+
+        .recording-glow {
+             animation: recording-glow-pulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes recording-glow-pulse {
+            0% { box-shadow: 0 0 10px var(--stark-red), 0 0 20px var(--stark-red); }
+            50% { box-shadow: 0 0 20px var(--stark-red), 0 0 40px var(--stark-red); }
+            100% { box-shadow: 0 0 10px var(--stark-red), 0 0 20px var(--stark-red); }
+        }
+
+        .chat-message { animation: fadeInUp 0.5s ease-out; }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* Custom scrollbar for chat history */
+        #chatHistory::-webkit-scrollbar { width: 8px; }
+        #chatHistory::-webkit-scrollbar-track { background: transparent; }
+        #chatHistory::-webkit-scrollbar-thumb { background-color: rgba(100, 255, 218, 0.5); border-radius: 4px; }
+        #chatHistory::-webkit-scrollbar-thumb:hover { background-color: rgba(100, 255, 218, 0.8); }
+
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+        }
+    </style>
+</head>
+<body class="text-gray-200 min-h-screen flex items-center justify-center p-4">
+    <div class="hud-glass p-6 md:p-8 rounded-lg shadow-2xl text-center max-w-4xl w-full mx-4">
+        
+        <!-- Header -->
+        <header class="mb-6 border-b-2 border-[var(--stark-light-blue)] pb-4">
+            <h1 class="text-4xl md:text-5xl font-orbitron font-bold text-white tracking-widest">
+                STARK
+            </h1>
+            <p class="text-lg text-[var(--stark-light-blue)] opacity-80">
+                Voice Command Interface
+            </p>
+        </header>
+        
+        <!-- Session Controls -->
+        <div class="flex justify-center items-center gap-4 mb-6">
+            <button id="newSessionBtn" class="border-2 border-[var(--stark-light-blue)] hover:bg-[var(--stark-light-blue)] hover:text-[var(--stark-dark-blue)] text-[var(--stark-light-blue)] py-2 px-5 rounded-md shadow-lg transition-all duration-300 transform hover:scale-105 font-semibold">
+                New Session
+            </button>
+            <button id="clearHistoryBtn" class="border-2 border-[var(--stark-light-blue)] hover:bg-[var(--stark-light-blue)] hover:text-[var(--stark-dark-blue)] text-[var(--stark-light-blue)] py-2 px-5 rounded-md shadow-lg transition-all duration-300 transform hover:scale-105 font-semibold">
+                Clear Log
+            </button>
+            <button id="settingsBtn" class="border-2 border-[var(--stark-light-blue)] hover:bg-[var(--stark-light-blue)] hover:text-[var(--stark-dark-blue)] text-[var(--stark-light-blue)] p-2.5 rounded-md shadow-lg transition-all duration-300 transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </button>
+        </div>
+        
+        <!-- Chat History -->
+        <div id="chatHistory" class="mb-6 max-h-72 min-h-[10rem] overflow-y-auto bg-black/30 rounded-md p-4 border border-white/20 text-left flex flex-col space-y-4">
+            <div class="initial-message text-gray-400 italic text-center flex items-center justify-center h-full flex-grow">
+                <div class="text-lg">Awaiting audio input...</div>
+            </div>
+        </div>
+        
+        <!-- Voice Visualizer -->
+        <div class="mb-6 h-24 flex items-center justify-center">
+            <canvas id="chatVisualizer" width="600" height="90" class="w-full hidden"></canvas>
+        </div>
+        
+        <!-- Main Record Button -->
+        <div class="flex justify-center mb-4">
+            <button id="mainRecordBtn" class="relative w-32 h-32 rounded-full transition-all duration-300 flex items-center justify-center arc-reactor-shadow">
+                <!-- Arc Reactor SVG -->
+                <svg id="arcReactorIcon" class="w-full h-full" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="48" fill="none" stroke="#64ffda" stroke-width="3"></circle>
+                    <circle cx="50" cy="50" r="38" fill="#0a192f"></circle>
+                    <circle id="arc-core" cx="50" cy="50" r="35" fill="#64ffda" class="transition-all"></circle>
+                    <g id="arc-lines">
+                        <line x1="50" y1="15" x2="50" y2="35" stroke="#0a192f" stroke-width="5" stroke-linecap="round"></line>
+                        <line x1="50" y1="65" x2="50" y2="85" stroke="#0a192f" stroke-width="5" stroke-linecap="round"></line>
+                        <line x1="15" y1="50" x2="35" y2="50" stroke="#0a192f" stroke-width="5" stroke-linecap="round"></line>
+                        <line x1="65" y1="50" x2="85" y2="50" stroke="#0a192f" stroke-width="5" stroke-linecap="round"></line>
+                    </g>
+                </svg>
+            </button>
+        </div>
+        
+        <!-- Status -->
+        <div id="statusContainer" class="h-8">
+            <p id="chatStatus" class="text-lg font-semibold text-white/90 hidden"></p>
+        </div>
+    </div>
+
+    <!-- API Keys Modal -->
+    <div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center hidden modal-backdrop">
+        <div class="hud-glass p-8 rounded-lg shadow-2xl text-white w-full max-w-lg mx-4">
+            <h2 class="text-3xl font-orbitron font-bold mb-6 text-center text-[var(--stark-light-blue)]">API Configuration</h2>
+            <div class="space-y-4 text-left">
+                <div>
+                    <label for="geminiApiKey" class="block mb-1 text-sm font-medium text-white/80">Google Gemini API Key</label>
+                    <input type="password" id="geminiApiKey" class="w-full bg-black/20 border border-white/30 rounded-md p-2 focus:ring-2 focus:ring-[var(--stark-gold)] focus:outline-none" placeholder="Enter your Gemini API Key">
+                </div>
+                <div>
+                    <label for="assemblyaiApiKey" class="block mb-1 text-sm font-medium text-white/80">AssemblyAI API Key</label>
+                    <input type="password" id="assemblyaiApiKey" class="w-full bg-black/20 border border-white/30 rounded-md p-2 focus:ring-2 focus:ring-[var(--stark-gold)] focus:outline-none" placeholder="Enter your AssemblyAI API Key">
+                </div>
+                <div>
+                    <label for="murfApiKey" class="block mb-1 text-sm font-medium text-white/80">Murf AI API Key</label>
+                    <input type="password" id="murfApiKey" class="w-full bg-black/20 border border-white/30 rounded-md p-2 focus:ring-2 focus:ring-[var(--stark-gold)] focus:outline-none" placeholder="Enter your Murf AI Key">
+                </div>
+                <div>
+                    <label for="tavilyApiKey" class="block mb-1 text-sm font-medium text-white/80">Tavily API Key (for web search)</label>
+                    <input type="password" id="tavilyApiKey" class="w-full bg-black/20 border border-white/30 rounded-md p-2 focus:ring-2 focus:ring-[var(--stark-gold)] focus:outline-none" placeholder="Enter your Tavily API Key">
+                </div>
+                <div>
+                    <label for="openweatherApiKey" class="block mb-1 text-sm font-medium text-white/80">OpenWeather API Key (for weather)</label>
+                    <input type="password" id="openweatherApiKey" class="w-full bg-black/20 border border-white/30 rounded-md p-2 focus:ring-2 focus:ring-[var(--stark-gold)] focus:outline-none" placeholder="Enter your OpenWeather API Key">
+                </div>
+            </div>
+            <div class="mt-8 flex justify-end gap-4">
+                <button id="closeSettingsBtn" class="border-2 border-gray-500 hover:bg-gray-500 py-2 px-6 rounded-md transition-all">Close</button>
+                <button id="saveSettingsBtn" class="bg-[var(--stark-gold)] hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded-md transition-all">Save Keys</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
