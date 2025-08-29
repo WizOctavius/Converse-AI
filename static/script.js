@@ -71,8 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 offset += chunk.byteLength;
             }
 
-            // The 'combined' buffer is now a complete WAV file received from Murf.
-            // We NO LONGER create our own header. We just use the buffer directly.
             const wavBuffer = combined.buffer;
 
             try {
@@ -275,25 +273,35 @@ document.addEventListener('DOMContentLoaded', () => {
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
-                console.log("WebSocket connected. Sending API keys.");
-                websocket.send(JSON.stringify({ type: 'config', keys: apiKeys }));
-                updateStatus('Connected. Recording...', false);
-                isRecording = true;
-                updateRecordButton('recording');
-                const userAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                mediaStreamSource = userAudioContext.createMediaStreamSource(stream);
-                const bufferSize = 4096;
-                scriptNode = userAudioContext.createScriptProcessor(bufferSize, 1, 1);
-                scriptNode.onaudioprocess = (audioProcessingEvent) => {
-                    if (!isRecording || websocket.readyState !== WebSocket.OPEN) return;
-                    const pcmData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                    const resampledData = resampleBuffer(pcmData, userAudioContext.sampleRate, TARGET_SAMPLE_RATE);
-                    const pcm16Data = convertTo16BitPCM(resampledData);
-                    websocket.send(pcm16Data.buffer);
-                };
-                mediaStreamSource.connect(scriptNode);
-                scriptNode.connect(userAudioContext.destination);
-                startChatVisualizer(stream);
+                console.log("WebSocket connection is now open.");
+
+                // --- FIX for 'CONNECTING' state error ---
+                // Add a check to ensure the websocket is fully open before sending.
+                if (websocket.readyState === WebSocket.OPEN) {
+                    console.log("Sending API keys.");
+                    websocket.send(JSON.stringify({ type: 'config', keys: apiKeys }));
+                    
+                    updateStatus('Connected. Recording...', false);
+                    isRecording = true;
+                    updateRecordButton('recording');
+                    
+                    const userAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    mediaStreamSource = userAudioContext.createMediaStreamSource(stream);
+                    const bufferSize = 4096;
+                    scriptNode = userAudioContext.createScriptProcessor(bufferSize, 1, 1);
+                    scriptNode.onaudioprocess = (audioProcessingEvent) => {
+                        if (!isRecording || websocket.readyState !== WebSocket.OPEN) return;
+                        const pcmData = audioProcessingEvent.inputBuffer.getChannelData(0);
+                        const resampledData = resampleBuffer(pcmData, userAudioContext.sampleRate, TARGET_SAMPLE_RATE);
+                        const pcm16Data = convertTo16BitPCM(resampledData);
+                        websocket.send(pcm16Data.buffer);
+                    };
+                    mediaStreamSource.connect(scriptNode);
+                    scriptNode.connect(userAudioContext.destination);
+                    startChatVisualizer(stream);
+                } else {
+                    console.error("onopen event fired but WebSocket is not in OPEN state. State is:", websocket.readyState);
+                }
             };
 
             websocket.onmessage = (event) => {
@@ -423,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 gradient.addColorStop(0.5, 'rgba(255, 193, 7, 0.5)');
                 gradient.addColorStop(1, 'rgba(100, 255, 218, 1)');
                 chatCanvasCtx.fillStyle = gradient;
-                chatCanvasCtx.fillRect(x, chatVisualizer.height - barHeight, barWidth, barHeight);
+                chatCanvasCtx.fillRect(x, chatVisualizer.height - barWidth, barHeight);
                 x += barWidth + 1;
             }
         }
