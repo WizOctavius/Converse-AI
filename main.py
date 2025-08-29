@@ -185,7 +185,7 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
                 nonlocal audio_chunk_count
                 try:
                     while True:
-                        response = await asyncio.wait_for(murf_ws.recv(), timeout=10.0)
+                        response = await asyncio.wait_for(murf_ws.recv(), timeout=30.0)
                         data = json.loads(response)
                         if "audio" in data:
                             audio_chunk_count += 1
