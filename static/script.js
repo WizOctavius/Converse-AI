@@ -323,6 +323,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             websocket.onmessage = (event) => {
+                // --- DIAGNOSTIC LOGGING START ---
+                // This will show us every raw message that arrives from the server.
+                console.log("Received data from server:", event.data);
+                // --- DIAGNOSTIC LOGGING END ---
+
                 if (typeof event.data !== 'string' || event.data.trim() === '') return;
                 let message;
                 try {
@@ -331,6 +336,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error("FAILED to parse JSON from server:", event.data, e);
                     return;
                 }
+
+                // --- DIAGNOSTIC LOGGING START ---
+                // This will confirm the message was parsed and show its type.
+                console.log("Parsed message type:", message.type);
+                // --- DIAGNOSTIC LOGGING END ---
+
                 if (message.type === 'error') {
                     console.error("Error from server:", message.message);
                     updateStatus(`Server Error: ${message.message}`, true);
