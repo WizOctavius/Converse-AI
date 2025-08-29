@@ -21,31 +21,48 @@ document.addEventListener('DOMContentLoaded', () => {
     let isRecording = false;
     let sessionId = null;
 
-    // --- AudioPlayer Class (Unchanged) ---
+    // --- REVAMPED AudioPlayer Class ---
     class AudioPlayer {
         constructor() {
             this.audioContext = null;
             this.rawAudioChunks = [];
+            this.isPlaying = false;
         }
+
         start() {
             if (!this.audioContext || this.audioContext.state === 'closed') {
+                console.log("Creating new AudioContext.");
                 this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            } else if (this.audioContext.state === 'suspended') {
-                this.audioContext.resume();
+            }
+            if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume().then(() => {
+                    console.log("AudioContext resumed successfully.");
+                });
             }
             this.rawAudioChunks = [];
+            this.isPlaying = false;
         }
+
         stop() {
             if (this.audioContext && this.audioContext.state === 'running') {
                 this.audioContext.close().then(() => console.log("AudioContext closed."));
             }
             this.rawAudioChunks = [];
+            this.isPlaying = false;
         }
+
         queueChunk(arrayBuffer) {
             this.rawAudioChunks.push(arrayBuffer);
         }
+
         async play() {
-            if (this.rawAudioChunks.length === 0) return;
+            if (this.rawAudioChunks.length === 0 || this.isPlaying) return;
+            this.isPlaying = true;
+
+            if (!this.audioContext || this.audioContext.state !== 'running') {
+                await this.audioContext.resume();
+            }
+
             const totalLength = this.rawAudioChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
             const combined = new Uint8Array(totalLength);
             let offset = 0;
@@ -53,6 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 combined.set(new Uint8Array(chunk), offset);
                 offset += chunk.byteLength;
             }
+
             const wavBuffer = this.createWavBuffer(combined);
             try {
                 const audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
@@ -60,12 +78,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 source.buffer = audioBuffer;
                 source.connect(this.audioContext.destination);
                 source.start(0);
-                this.rawAudioChunks = [];
+                source.onended = () => {
+                    console.log("Playback finished.");
+                    this.isPlaying = false;
+                    this.rawAudioChunks = [];
+                };
             } catch (error) {
                 console.error("Failed to decode and play WAV audio:", error);
                 updateStatus("Error playing back audio", true);
+                this.isPlaying = false;
             }
         }
+
         createWavBuffer(pcmData) {
             const sampleRate = 44100;
             const numChannels = 1;
@@ -91,6 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             new Uint8Array(buffer, 44).set(pcmData);
             return buffer;
         }
+        
         writeString(view, offset, string) {
             for (let i = 0; i < string.length; i++) {
                 view.setUint8(offset + i, string.charCodeAt(i));
@@ -271,7 +296,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             audioPlayer.start();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
-            const wsUrl = `wss://${window.location.host}/ws/${sessionId}`;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/${sessionId}`;
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
