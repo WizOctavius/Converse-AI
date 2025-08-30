@@ -189,7 +189,9 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
                         data = json.loads(response)
                         if "audio" in data:
                             audio_chunk_count += 1
-                            await client_websocket.send_text(json.dumps({"type": "audio_chunk", "audio_data": data["audio"]}))
+                            # Check if client websocket is still open before sending
+                            if client_websocket.client_state == 'CONNECTED':
+                                await client_websocket.send_text(json.dumps({"type": "audio_chunk", "audio_data": data["audio"]}))
                         if data.get("final"):
                             break
                 except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed):
@@ -201,8 +203,10 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
             
             model = genai.GenerativeModel("gemini-1.5-flash", tools=[{"function_declarations": get_function_declarations()}])
             response_stream = model.generate_content(history_for_model, stream=True)
-
-            await client_websocket.send_text(json.dumps({"type": "audio_stream_start"}))
+            
+            # Check if client websocket is still open before sending
+            if client_websocket.client_state == 'CONNECTED':
+                await client_websocket.send_text(json.dumps({"type": "audio_stream_start"}))
 
             for chunk in response_stream:
                 if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
@@ -245,8 +249,10 @@ async def stream_llm_response_to_murf_and_client(prompt: str, client_websocket: 
             chat_histories[session_id].append({"role": "user", "parts": [{"text": prompt}]})
             chat_histories[session_id].append({"role": "model", "parts": [{"text": full_llm_response_text}]})
         try:
-            await client_websocket.send_text(json.dumps({"type": "audio_stream_end"}))
-            await client_websocket.send_text(json.dumps({"type": "llm_response_text", "text": full_llm_response_text}))
+            # Check if client websocket is still open before sending
+            if client_websocket.client_state == 'CONNECTED':
+                await client_websocket.send_text(json.dumps({"type": "audio_stream_end"}))
+                await client_websocket.send_text(json.dumps({"type": "llm_response_text", "text": full_llm_response_text}))
         except Exception as e:
             logger.error(f"Failed to send final messages to client: {e}")
         print("\n--- End of LLM Stream ---\n")
@@ -277,7 +283,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
     audio_queue = asyncio.Queue()
     main_loop = asyncio.get_event_loop()
-    state = {"last_transcript": "", "debounce_task": None}
+    state = {"last_transcript": "", "debounce_task": None, "llm_task": None} # Added llm_task to state
 
     def on_turn(client, event: TurnEvent):
         if event.end_of_turn and event.transcript:
@@ -290,8 +296,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                     await asyncio.sleep(1.2)
                     final_transcript = state["last_transcript"]
                     if not final_transcript: return
+                    # Cancel any existing LLM task before starting a new one
+                    if state["llm_task"] and not state["llm_task"].done():
+                        state["llm_task"].cancel()
                     # Pass the API keys to the streaming function
-                    asyncio.create_task(stream_llm_response_to_murf_and_client(final_transcript, websocket, session_id, api_keys))
+                    state["llm_task"] = asyncio.create_task(stream_llm_response_to_murf_and_client(final_transcript, websocket, session_id, api_keys))
                     await websocket.send_text(json.dumps({"type": "transcription", "text": final_transcript}))
                 except asyncio.CancelledError: pass
                 except Exception as e: logger.error(f"Error in debounced_send: {e}")
@@ -332,7 +341,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
     except Exception as e:
         logger.error(f"Error during concurrent execution: {e}")
     finally:
+        # Cancel all running tasks when the endpoint finishes
+        if state["debounce_task"] and not state["debounce_task"].done():
+            state["debounce_task"].cancel()
+        if state["llm_task"] and not state["llm_task"].done():
+            state["llm_task"].cancel()
         logger.info(f"WebSocket endpoint for session {session_id} finished.")
+
 
 # --- HTTP Endpoints (They will use keys from .env) ---
 
