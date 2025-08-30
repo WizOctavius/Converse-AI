@@ -21,122 +21,51 @@ document.addEventListener('DOMContentLoaded', () => {
     let isRecording = false;
     let sessionId = null;
 
-    // --- IMPROVED AudioPlayer Class ---
+    // --- AudioPlayer Class (Unchanged) ---
     class AudioPlayer {
         constructor() {
             this.audioContext = null;
             this.rawAudioChunks = [];
-            this.isPlaying = false;
-            this.audioQueue = [];
         }
-
-        async start() {
-            try {
-                // Create new AudioContext with proper initialization
-                if (!this.audioContext || this.audioContext.state === 'closed') {
-                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                
-                // Ensure AudioContext is running
-                if (this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
-                }
-                
-                this.rawAudioChunks = [];
-                this.audioQueue = [];
-                this.isPlaying = false;
-                console.log("AudioPlayer started, AudioContext state:", this.audioContext.state);
-            } catch (error) {
-                console.error("Failed to start AudioPlayer:", error);
-                updateStatus("Audio initialization failed", true);
+        start() {
+            if (!this.audioContext || this.audioContext.state === 'closed') {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } else if (this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
             }
-        }
-
-        async stop() {
-            this.isPlaying = false;
             this.rawAudioChunks = [];
-            this.audioQueue = [];
-            // Don't close the AudioContext, just suspend it for reuse
+        }
+        stop() {
             if (this.audioContext && this.audioContext.state === 'running') {
-                await this.audioContext.suspend();
+                this.audioContext.close().then(() => console.log("AudioContext closed."));
             }
+            this.rawAudioChunks = [];
         }
-
         queueChunk(arrayBuffer) {
-            if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-                console.warn("Received empty audio chunk");
-                return;
-            }
             this.rawAudioChunks.push(arrayBuffer);
-            console.log(`Queued audio chunk: ${arrayBuffer.byteLength} bytes, total chunks: ${this.rawAudioChunks.length}`);
         }
-
         async play() {
-            if (this.rawAudioChunks.length === 0) {
-                console.warn("No audio chunks to play");
-                return;
+            if (this.rawAudioChunks.length === 0) return;
+            const totalLength = this.rawAudioChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
+            const combined = new Uint8Array(totalLength);
+            let offset = 0;
+            for (const chunk of this.rawAudioChunks) {
+                combined.set(new Uint8Array(chunk), offset);
+                offset += chunk.byteLength;
             }
-
-            if (this.isPlaying) {
-                console.log("Already playing audio, queuing for later");
-                return;
-            }
-
-            console.log(`Starting playback of ${this.rawAudioChunks.length} audio chunks`);
-            this.isPlaying = true;
-
+            const wavBuffer = this.createWavBuffer(combined);
             try {
-                // Ensure AudioContext is ready
-                if (!this.audioContext || this.audioContext.state === 'closed') {
-                    await this.start();
-                }
-
-                if (this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
-                }
-
-                // Combine all chunks
-                const totalLength = this.rawAudioChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
-                const combined = new Uint8Array(totalLength);
-                let offset = 0;
-                
-                for (const chunk of this.rawAudioChunks) {
-                    combined.set(new Uint8Array(chunk), offset);
-                    offset += chunk.byteLength;
-                }
-
-                console.log(`Combined audio data: ${combined.length} bytes`);
-
-                // Create WAV buffer and decode
-                const wavBuffer = this.createWavBuffer(combined);
                 const audioBuffer = await this.audioContext.decodeAudioData(wavBuffer);
-                
-                console.log(`Decoded audio: ${audioBuffer.duration.toFixed(2)}s, ${audioBuffer.sampleRate}Hz`);
-
-                // Play the audio
                 const source = this.audioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(this.audioContext.destination);
-
-                // Handle playback completion
-                source.onended = () => {
-                    console.log("Audio playback completed");
-                    this.isPlaying = false;
-                    this.rawAudioChunks = [];
-                    updateStatus("Ready for command.", false);
-                };
-
                 source.start(0);
-                updateStatus("Playing audio response...", false);
-
-            } catch (error) {
-                console.error("Failed to decode and play audio:", error);
-                updateStatus("Error playing audio response", true);
-                this.isPlaying = false;
                 this.rawAudioChunks = [];
+            } catch (error) {
+                console.error("Failed to decode and play WAV audio:", error);
+                updateStatus("Error playing back audio", true);
             }
         }
-
         createWavBuffer(pcmData) {
             const sampleRate = 44100;
             const numChannels = 1;
@@ -144,11 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const blockAlign = numChannels * bytesPerSample;
             const byteRate = sampleRate * blockAlign;
             const dataSize = pcmData.length;
-            
             const buffer = new ArrayBuffer(44 + dataSize);
             const view = new DataView(buffer);
-            
-            // WAV header
             this.writeString(view, 0, 'RIFF');
             view.setUint32(4, 36 + dataSize, true);
             this.writeString(view, 8, 'WAVE');
@@ -162,12 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
             view.setUint16(34, bytesPerSample * 8, true);
             this.writeString(view, 36, 'data');
             view.setUint32(40, dataSize, true);
-            
-            // Audio data
             new Uint8Array(buffer, 44).set(pcmData);
             return buffer;
         }
-
         writeString(view, offset, string) {
             for (let i = 0; i < string.length; i++) {
                 view.setUint8(offset + i, string.charCodeAt(i));
@@ -230,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
     saveSettingsBtn.addEventListener('click', saveApiKeys);
 
-    // --- Session Initialization ---
+    // --- Session Initialization (Unchanged) ---
     function initializeSession() {
         sessionId = crypto.randomUUID();
         console.log(`New session started: ${sessionId}`);
@@ -244,21 +167,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function base64ToArrayBuffer(base64String) {
-        try {
-            const binaryString = window.atob(base64String);
-            const len = binaryString.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            return bytes.buffer;
-        } catch (error) {
-            console.error("Failed to decode base64 audio:", error);
-            return null;
+        const binaryString = window.atob(base64String);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
         }
+        return bytes.buffer;
     }
 
-    // --- UI State Management Functions ---
+    // --- REVAMPED: UI State Management Functions ---
     function updateRecordButton(state) {
         switch (state) {
             case 'idle':
@@ -280,7 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateStatus(message, isError = false) {
-        console.log("Status update:", message);
         chatStatus.textContent = message;
         chatStatus.className = `text-lg font-semibold ${isError ? 'text-red-400' : 'text-[var(--stark-light-blue)]'}`;
         chatStatus.classList.remove('hidden');
@@ -311,35 +228,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- IMPROVED WebSocket and Audio Handling ---
+    // --- WebSocket and Audio Handling (Unchanged) ---
     function handleAudioStreamStart() {
         console.log("Audio streaming started from server");
         updateStatus("Receiving audio stream...", false);
         addMessageToHistory("...", 'assistant');
-        // Initialize audio player for incoming stream
-        audioPlayer.start();
     }
 
     function handleAudioChunk(chunkData) {
         const { audio_data } = chunkData;
-        if (!audio_data) {
-            console.warn("Received audio chunk without data");
-            return;
-        }
-        
+        if (!audio_data) return;
         const arrayBuffer = base64ToArrayBuffer(audio_data);
-        if (arrayBuffer) {
-            audioPlayer.queueChunk(arrayBuffer);
-        }
+        audioPlayer.queueChunk(arrayBuffer);
     }
 
-    async function handleAudioStreamEnd() {
-        console.log("Audio stream completed from server");
-        updateStatus("Audio stream complete. Processing...", false);
-        // Small delay to ensure all chunks are received
-        setTimeout(() => {
-            audioPlayer.play();
-        }, 100);
+    function handleAudioStreamEnd() {
+        console.log("AUDIO STREAMING COMPLETED");
+        updateStatus("Audio stream complete. Playing...", false);
+        audioPlayer.play();
     }
 
     mainRecordBtn.addEventListener('click', () => {
@@ -362,55 +268,29 @@ document.addEventListener('DOMContentLoaded', () => {
             settingsModal.classList.remove('hidden');
             return;
         }
-
         try {
-            // Initialize audio player first
-            await audioPlayer.start();
-
-            // Get microphone permission
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: { 
-                    channelCount: 1,
-                    sampleRate: 44100,
-                    echoCancellation: true,
-                    noiseSuppression: true
-                } 
-            });
-
-            // Determine WebSocket URL based on current protocol
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/${sessionId}`;
-            console.log(`Connecting to WebSocket: ${wsUrl}`);
-
+            audioPlayer.start();
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1 } });
+            const wsUrl = `wss://${window.location.host}/ws/${sessionId}`;
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
-                console.log("WebSocket connected. Sending API keys configuration.");
+                console.log("WebSocket connected. Sending API keys.");
                 websocket.send(JSON.stringify({ type: 'config', keys: apiKeys }));
                 updateStatus('Connected. Recording...', false);
                 isRecording = true;
                 updateRecordButton('recording');
-
-                // Set up audio processing
                 const userAudioContext = new (window.AudioContext || window.webkitAudioContext)();
                 mediaStreamSource = userAudioContext.createMediaStreamSource(stream);
                 const bufferSize = 4096;
                 scriptNode = userAudioContext.createScriptProcessor(bufferSize, 1, 1);
-                
                 scriptNode.onaudioprocess = (audioProcessingEvent) => {
                     if (!isRecording || websocket.readyState !== WebSocket.OPEN) return;
-                    
                     const pcmData = audioProcessingEvent.inputBuffer.getChannelData(0);
                     const resampledData = resampleBuffer(pcmData, userAudioContext.sampleRate, TARGET_SAMPLE_RATE);
                     const pcm16Data = convertTo16BitPCM(resampledData);
-                    
-                    try {
-                        websocket.send(pcm16Data.buffer);
-                    } catch (error) {
-                        console.error("Failed to send audio data:", error);
-                    }
+                    websocket.send(pcm16Data.buffer);
                 };
-
                 mediaStreamSource.connect(scriptNode);
                 scriptNode.connect(userAudioContext.destination);
                 startChatVisualizer(stream);
@@ -418,28 +298,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             websocket.onmessage = (event) => {
                 if (typeof event.data !== 'string' || event.data.trim() === '') return;
-                
                 let message;
                 try {
                     message = JSON.parse(event.data);
                 } catch (e) {
-                    console.error("Failed to parse WebSocket message:", event.data, e);
+                    console.error("FAILED to parse JSON from server:", event.data, e);
                     return;
                 }
-
-                console.log("Received WebSocket message:", message.type);
-
                 if (message.type === 'error') {
-                    console.error("Server error:", message.message);
+                    console.error("Error from server:", message.message);
                     updateStatus(`Server Error: ${message.message}`, true);
                     stopStreaming();
                     return;
                 }
-
                 switch (message.type) {
                     case 'transcription':
                         if (message.text && message.text.trim() !== '') {
-                            console.log("Transcription received:", message.text);
                             addMessageToHistory(message.text, 'user');
                         }
                         break;
@@ -453,77 +327,57 @@ document.addEventListener('DOMContentLoaded', () => {
                         handleAudioStreamEnd();
                         break;
                     case 'llm_response_text':
-                        console.log("LLM response received:", message.text);
                         updateAssistantMessage(message.text);
                         break;
                     default:
-                        console.warn("Unknown message type:", message.type);
+                        console.warn("UNKNOWN message type:", message.type);
                 }
             };
-
-            websocket.onclose = (event) => {
-                console.log("WebSocket closed:", event.code, event.reason);
-                updateStatus('Connection closed.', false);
+            websocket.onclose = () => {
+                updateStatus('Recording stopped.', false);
                 if (isRecording) stopStreaming();
             };
-
             websocket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                updateStatus('Connection error occurred.', true);
+                console.error('WebSocket Error:', error);
+                updateStatus('WebSocket connection error.', true);
                 if (isRecording) stopStreaming();
             };
-
         } catch (error) {
-            console.error("Failed to start streaming:", error);
-            updateStatus('Failed to access microphone or connect.', true);
+            console.error("Microphone access error:", error);
+            updateStatus('Microphone access denied.', true);
         }
     }
 
     function stopStreaming() {
         if (!isRecording) return;
-        
-        console.log("Stopping streaming...");
         isRecording = false;
         updateRecordButton('processing');
-        
-        // Clean up WebSocket
-        if (websocket && websocket.readyState === WebSocket.OPEN) {
-            websocket.close();
-        }
-
-        // Clean up audio processing
+        setTimeout(() => {
+            updateRecordButton('idle');
+            updateStatus("Ready for command.");
+        }, 2000);
         if (scriptNode) {
             scriptNode.disconnect();
             scriptNode = null;
         }
-        
         if (mediaStreamSource) {
             mediaStreamSource.mediaStream.getTracks().forEach(track => track.stop());
             mediaStreamSource.disconnect();
             mediaStreamSource = null;
         }
-        
         stopChatVisualizer();
-
-        setTimeout(() => {
-            updateRecordButton('idle');
-            updateStatus("Ready for command.");
-        }, 2000);
     }
 
     // --- Audio Processing Utilities (Unchanged) ---
     function resampleBuffer(inputBuffer, fromSampleRate, toSampleRate) {
         if (fromSampleRate === toSampleRate) return inputBuffer;
-        
         const sampleRateRatio = fromSampleRate / toSampleRate;
         const newLength = Math.round(inputBuffer.length / sampleRateRatio);
         const result = new Float32Array(newLength);
-        
         for (let i = 0; i < newLength; i++) {
             const index = i * sampleRateRatio;
             const indexFloor = Math.floor(index);
             const indexCeil = Math.ceil(index);
-            
             if (indexCeil >= inputBuffer.length) {
                 result[i] = inputBuffer[inputBuffer.length - 1];
             } else {
@@ -543,7 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return output;
     }
 
-    // --- Visualizer Functions (Unchanged) ---
+    // --- REVAMPED: Visualizer Functions ---
     function startChatVisualizer(stream) {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const analyser = audioCtx.createAnalyser();
@@ -588,5 +442,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initialize on load ---
     loadApiKeys();
     initializeSession();
-    updateRecordButton('idle');
+    updateRecordButton('idle'); // Set initial button state
 });
